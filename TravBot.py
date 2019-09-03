@@ -706,8 +706,9 @@ class GUI:
 
 
 if __name__ == "__main__":
-    bot = WebActions("eliranisrael", "123saltfish")
-    print(bot.get_gid())
+    # bot = WebActions("eliranisrael", "123saltfish")
+    # print(bot.get_gid())
 
-    # gui = GUI()
+    gui = GUI()
+
 
