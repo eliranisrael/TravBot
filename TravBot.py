@@ -429,6 +429,7 @@ class Village:
         """
         adding a trading_route (TradingRouteEntry) to the village's trading_routes.
         """
+        # 2
         pass  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TODO
 
     def __eq__(self, other):
