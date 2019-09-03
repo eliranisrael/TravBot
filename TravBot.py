@@ -423,6 +423,7 @@ class Village:
         """
         adding a building to the village's building_list.
         """
+        # 1
         pass  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TODO
 
     def add_trading_route(self, trading_route):
