@@ -34,6 +34,17 @@ def write_file(file_name, data_to_write):
         pickle.dump(data_to_write, wf)
 
 
+def find_user(username, users_list):
+    return next(user for user in users_list if user == username)
+
+
+def find_village(key, villages_list, by="newdid"):
+    if by == "newdid":
+        return next(village for village in villages_list if village == key)
+    else:  # by == village's name
+        return next(village for village in villages_list if village.name == key)
+
+
 class WebActions:
 
     def __init__(self, user, password):
@@ -46,20 +57,20 @@ class WebActions:
         else:
             self.browser.get("https://ts1.travian.co.il/login.php")
 
-    #  NEED TO FIX
-    def add_user(self, username, password):
+    @staticmethod
+    def add_user(new_user):
         """
-        adds user to the users_dic and making a new folder for this user.
+        adds user to the users_list ***and making a new folder for this user.
         """
-        with open("users_dic.file", "rb") as rf:
-            users_dic = dict(pickle.load(rf))
+        with open("users.file", "rb") as rf:
+            users_list = list(pickle.load(rf))
 
-        users_dic[username] = password
+        users_list.append(new_user)
 
-        with open("users_dic.file", "wb") as wf:
-            pickle.dump(users_dic, wf)
+        with open("users.file", "wb") as wf:
+            pickle.dump(users_list, wf)
 
-        path = os.path.dirname(os.path.realpath(__file__)) + '\\users\{}'.format(username)
+        path = os.path.dirname(os.path.realpath(__file__)) + f"\\users\\{new_user.username}"
         if not os.path.isdir(path):
             os.makedirs(path)
 
@@ -137,7 +148,7 @@ class WebActions:
         *** creates a folder for each village if one's not exist ^^^and it's base files.^^^ ***
         :return: a list of Villages.
         """
-        villages_dic = {}
+        villages_list = []
         ul = self.browser.find_elements_by_xpath("//body/div[3]/div[2]/div[2]/div[3]/div[2]/div[2]/div[2]/ul/li")
 
         for i in range(len(ul)):
@@ -145,20 +156,20 @@ class WebActions:
             xpathdiv = "//body/div[3]/div[2]/div[2]/div[3]/div[2]/div[2]/div[2]/ul/li[{}]/a/div[@class='name']".format(i + 1)
             b, newdid = self.browser.find_element_by_xpath(xpatha).get_attribute("href")[:-1].split("newdid=")
             name = self.browser.find_element_by_xpath(xpathdiv).get_attribute("textContent")
-            villages_dic[name] = newdid
+            villages_list.append((name, newdid))
 
-            path = os.path.dirname(os.path.realpath(__file__)) + "\\users\\{}\\{}".format(self.user, newdid)
-            if not os.path.exists(path):
-                os.makedirs(path)
-                lst = []
-                with open(path + "\\raid_list.file", "w"):
-                    pass
-                with open(path + "\\build_list.file", "w"):
-                    pass
-                with open(path + "\\route_list.file", "w"):
-                    pass
+            # path = os.path.dirname(os.path.realpath(__file__)) + "\\users\\{}\\{}".format(self.user, newdid)
+            # if not os.path.exists(path):
+            #    os.makedirs(path)
+            #    lst = []
+            #    with open(path + "\\raid_list.file", "w"):
+            #        pass
+            #    with open(path + "\\build_list.file", "w"):
+            #        pass
+            #    with open(path + "\\route_list.file", "w"):
+            #        pass
 
-        return villages_dic
+        return villages_list
 
     def send_resources(self, source_newdid, targetX, targetY, resources):
         """
@@ -180,10 +191,16 @@ class WebActions:
         """
         :return: (wood, clay, iron, crop). (tuple)
         """
+        self.browser.get("https://ts1.travian.co.il/dorf1.php")
         lst = []
         for i in range(1, 5):
             tr = self.browser.find_element_by_xpath(f"//*[@id='production']/tbody/tr[{i}]/td[@class='num']").get_attribute("outerText")
-            lst.append(int(tr[1:-1]))
+            tr = tr[1:-1]
+            try:
+                lst.append(int(tr))
+            except(ValueError):
+                tr = int(tr[2:-1])*(-1)
+                lst.append(tr)
 
         return tuple(lst)
 
@@ -191,8 +208,11 @@ class WebActions:
         """
         :return: (int)
         """
-        self.browser.get("https://ts1.travian.co.il/build.php?t=5&gid=17")
-        return self.browser.find_element_by_xpath("//*[@id='addRessourcesLink1']").text
+        try:
+            self.browser.get("https://ts1.travian.co.il/build.php?t=5&gid=17")
+            return self.browser.find_element_by_xpath("//*[@id='addRessourcesLink1']").text
+        except:
+            return 0
 
     #     def get_time_limited_resource_bonuses(self):
 
@@ -296,13 +316,48 @@ class WebActions:
         """
         :return: the tribe's name. (string)
         """
-        tribe = ""
-        return tribe
+        tribe = self.browser.find_element_by_xpath("//*[@id='sidebarBoxHero']/div[2]/div[1]/div[1]/a[1]/i").get_attribute("class")[5:6]
+        return int(tribe)
+
+    def get_hero_location(self, villages):
+        """
+        :return: the hero's location. (Village)
+        """
+        self.browser.get("https://ts1.travian.co.il/hero.php")
+        village_name = self.browser.find_element_by_xpath("//*[@id='attributes']/div[1]/div[1]/div/span/a").get_attribute("innerText")
+        return find_village(village_name, villages, by="name")
+
+    # NEED TO FINISH
+    def update_village_info(self, village):
+        self.browser.get(f"https://ts1.travian.co.il/dorf2.php?newdid={village.newdid}&")
+        village.hourly_production = self.get_hourly_production()
+        village.available_resources = self.get_available_resources()
+        village.trader_capacity = self.get_trader_capacity()
+        self.browser.get("https://ts1.travian.co.il/karte.php")
+        time.sleep(1)
+        url = self.browser.current_url
+        ss1 = url.split("x=")
+        ss2 = url.split("y=")
+        ss1 = ss1[1]
+        ss2 = ss2[1]
+        ss1 = ss1.split("&")
+        ss1 = ss1[0]
+        village.x, village.y, village.z = ss1, ss2, None
+
+    # NEED TO FINISH
+    def update_user_info(self, user):
+
+        user.hero_location = self.get_hero_location(user.villages)
+        #  NEED TO ADD BALANCE
+
+    # NEED TO FINISH
+    def total_update(self, user):
+        pass
 
 
 class Village:
 
-    def __init__(self, username, newdid, status="feeder"):
+    def __init__(self, username, newdid, village_name, status="feed"):
         """
         :type username: (srting)
         :param newdid: (int)
@@ -311,107 +366,18 @@ class Village:
         self.username = username
         self.newdid = newdid
         self.status = status
-        self.name = self.get_name()
-        self.x, self.y, self.z = self.get_coordinates()
-        self.trader_capacity = self.get_trader_capacity()
-        self.hourly_production = self.get_hourly_production()
-        self.time_limited_resource_bonuses = self.get_time_limited_resource_bonuses()
-        self.available_resources = self.get_available_resources()
-        self.available_troops = self.get_available_troops()
-        self.farm_list = self.get_farm_list()
-        self.build_list = self.get_build_list()
-        self.trading_routes = self.get_trading_routes()
-        self.reinforcements = self.get_reinforcements()
-        self.balance = 0  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TODO
-
-    def get_name(self):
-        """
-        :return: the name of the village.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        name = ""  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return name
-
-    def get_coordinates(self):
-        """
-        :return: the coordinates of the village.
-                 (x,y,z)
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        x, y, z = 0, 0, 0
-        return x, y, z
-
-    def get_trader_capacity(self):
-        """
-        :return: the capacity of the village's trader.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        capacity = ""  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return capacity
-
-    def get_hourly_production(self):
-        """
-        :return: the current production of the village, ignoring time limited bonuses. (tuple)
-                 (wood, clay, iron, crop)
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return (0, 0, 0, 0)
-
-    def get_time_limited_resource_bonuses(self):
-        """
-        :return: the current percentage of time limited bonuses to each resource, and it's time left.
-                 e.x. (25, 0, 0, 25)
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return (0, 0, 0, 0)
-
-    def get_available_resources(self):
-        """
-        :return: the current available resources. (tuple)
-                 e.x. (12437, 723, 14, 31234)
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return (0, 0, 0, 0)
-
-    def get_available_troops(self):
-        """
-        :return: the current available troops. (tuple)
-                 (t1, t2, ... , t10, t11)
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        return (0, 0, 0, 0)
-
-    def get_reinforcements(self):
-        """
-        :return: the village's reinforcements.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        reinforcements = 0
-        return reinforcements
-
-    def get_farm_list(self):
-        """
-        :return: the village's farm_list.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        farm_list = 0
-        return farm_list
-
-    def get_build_list(self):
-        """
-        :return: the village's build_list.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        build_list = 0
-        return build_list
-
-    def get_trading_routes(self):
-        """
-        :return: the village's trading routes.
-        """
-        self.newdid  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        trading_routes = 0
-        return trading_routes
+        self.name = village_name
+        self.x, self.y, self.z = None, None, None
+        self.trader_capacity = None
+        self.hourly_production = None
+        # self.time_limited_resource_bonuses = None
+        self.available_resources = None
+        self.available_troops = None
+        self.farm_list = None
+        self.build_list = []
+        self.trading_routes = None
+        self.reinforcements = None
+        self.balance = None  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TODO
 
     def add_farm(self, farm):
         """
@@ -442,20 +408,12 @@ class Village:
 
 class User:
 
-    def __init__(self, username, password):
+    def __init__(self, username, password, tribe=None, villages=None, hero_location=None):
         self.username = username
         self.password = password
-        self.tribe = self.get_tribe()
-        self.villages = {}  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        self.hero_location = self.get_hero_location()
-
-    def get_tribe(self):
-        """
-        :return: the tribe's name. (string)
-        """
-        self.username  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TODO
-        tribe = ""
-        return tribe
+        self.tribe = tribe  # 1 - Romans, 2 - Teutons, 3 - Gauls. (int)
+        self.villages = villages
+        self.hero_location = hero_location
 
     def get_hero_location(self):
         """
@@ -531,17 +489,17 @@ class TradingRouteEntry:
 
 class BuildingTask:
 
-    def __init__(self, village, gid, resources, id=None):
+    def __init__(self, village, gid, id, resources=None):
         """
         :param village: (Village)
         :param gid: the building's ID you'd like to upgrade. (string)
-        :param resources: the resources needed to build this. (wood, clay, iron, crop). (tuple)
         :param id: (string)
+        :param resources: the resources needed to build this. (wood, clay, iron, crop). (tuple)
         """
         self.village = village
         self.building_id = gid
-        self.resources = resources
         self.id = id
+        self.resources = resources
 
 
 class Farm:
@@ -571,38 +529,57 @@ class GUI:
 
     def __init__(self):
 
-        def login(username=False, password=False):
-            if username and password:
-                bot = WebActions(username, password)
+        def login(user=None, need_to_add=False):
+
+            if user:
+                bot = WebActions(user.username, user.password)
             else:
-                global selected_username
-                bot = WebActions(selected_username.get(), users_dic[selected_username.get()])
+                # global selected_username
+                bot = WebActions(selected_username.get(), find_user(selected_username.get(), users_list).password)
+
+            if need_to_add:
+                user.tribe = bot.get_tribe()
+
+                # SET UP VILLAGES
+                villages_list = []
+                vil_list = bot.get_villages()
+                for vil in vil_list:
+                    new_vil = Village(username_Entry.get(), vil[1], vil[0])
+                    bot.update_village_info(new_vil)
+                    villages_list.append(new_vil)
+                user.villages = villages_list
+
+                bot.update_user_info(user)
+
+                WebActions.add_user(user)
+
             global login_window
             login_window.destroy()
             self.bot_window(bot)
-            del login_window, selected_username
+            del login_window,  # selected_username
+            return bot
 
         def added_and_login():
             if username_Entry.get() == "" or password_Entry.get() == "":
                 messagebox.showerror("Error", "Please enter username and password")
             else:
-                text = "Are you sure that you want to add '{}' as a new user with '{}' as it's password?".format(username_Entry.get(),
-                                                                                                                 password_Entry.get())
+                text = f"Are you sure that you want to add '{username_Entry.get()}' as a new user" \
+                    f" with '{password_Entry.get()}' as it's password?"
                 if messagebox.askyesno("Info Confirmation", text):
-                    global users_option_menu
-                    WebActions.add_user(username_Entry.get(), password_Entry.get())
-                    login(username_Entry.get(), password_Entry.get())
+                    # global users_option_menu
+                    new_user = User(username_Entry.get(), password_Entry.get())
+                    # bot = login(new_user, need_to_add=True)
+                    login(new_user, need_to_add=True)
 
-        with open("users_dic.file", "rb") as rf:
-            users_dic = dict(pickle.load(rf))
+        users_list = list(read_file("users"))
 
         usernames = []
-        for username in users_dic.keys():
-            usernames.append(username)
+        for user in users_list:
+            usernames.append(user.username)
 
         global login_window
         login_window = tk.Tk()
-        login_window.title("TravianBot Login")
+        login_window.title("Travian Bot Login")
 
         login_frame = tk.Frame(login_window, borderwidth=10)
         login_frame.pack()
@@ -709,7 +686,7 @@ class GUI:
 
 if __name__ == "__main__":
     # bot = WebActions("eliranisrael", "123saltfish")
-    # print(bot.get_gid())
+    # print(bot.get_hourly_production())
 
     gui = GUI()
 
